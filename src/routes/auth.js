@@ -1,0 +1,77 @@
+const express = require('express');
+const router = express.Router();
+const { body, validationResult } = require('express-validator');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const { query, getClient } = require('../config/database');
+const { AppError } = require('../middleware/errorHandler');
+const rateLimit = require('express-rate-limit');
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Too many attempts' } });
+const generateTokens = (userId, role) => {
+  const accessToken = jwt.sign({ userId, role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  const refreshToken = uuidv4();
+  return { accessToken, refreshToken };
+};
+router.post('/register', authLimiter, [
+  body('email').isEmail().normalizeEmail(),
+  body('phone').isMobilePhone(),
+  body('password').isLength({ min: 8 }),
+  body('firstName').trim().notEmpty(),
+  body('lastName').trim().notEmpty(),
+  body('role').isIn(['rider', 'driver']),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const { email, phone, password, firstName, lastName, role } = req.body;
+    const existing = await query('SELECT id FROM users WHERE email = $1 OR phone = $2', [email, phone]);
+    if (existing.rows.length) throw new AppError('Email or phone already registered', 409);
+    const passwordHash = await bcrypt.hash(password, 12);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const userResult = await client.query(
+        'INSERT INTO users (email, phone, password_hash, first_name, last_name, role) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+        [email, phone, passwordHash, firstName, lastName, role]
+      );
+      const userId = userResult.rows[0].id;
+      if (role === 'rider') await client.query('INSERT INTO riders (id) VALUES ($1)', [userId]);
+      else if (role === 'driver') {
+        const { licenseNumber, licenseExpiry, vehiclePlate, vehicleMake, vehicleModel, vehicleYear } = req.body;
+        await client.query('INSERT INTO drivers (id, license_number, license_expiry, vehicle_plate, vehicle_make, vehicle_model, vehicle_year) VALUES ($1,$2,$3,$4,$5,$6,$7)', [userId, licenseNumber, licenseExpiry, vehiclePlate, vehicleMake, vehicleModel, vehicleYear]);
+      }
+      await client.query('COMMIT');
+      const { accessToken, refreshToken } = generateTokens(userId, role);
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await query('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1,$2,$3)', [userId, refreshToken, expiresAt]);
+      res.status(201).json({ message: 'Account created', user: { id: userId, email, role, firstName, lastName }, accessToken, refreshToken });
+    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+  } catch (err) { next(err); }
+});
+router.post('/login', authLimiter, [
+  body('email').isEmail().normalizeEmail(),
+  body('password').notEmpty(),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const { email, password } = req.body;
+    const result = await query('SELECT id, email, password_hash, role, is_active, first_name, last_name FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
+    if (!user || !await bcrypt.compare(password, user.password_hash)) throw new AppError('Invalid email or password', 401);
+    if (!user.is_active) throw new AppError('Account deactivated', 403);
+    const { accessToken, refreshToken } = generateTokens(user.id, user.role);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await query('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1,$2,$3)', [user.id, refreshToken, expiresAt]);
+    res.json({ user: { id: user.id, email: user.email, role: user.role, firstName: user.first_name, lastName: user.last_name }, accessToken, refreshToken });
+  } catch (err) { next(err); }
+});
+router.post('/logout', async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    if (refreshToken) await query('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
+    res.json({ message: 'Logged out' });
+  } catch (err) { next(err); }
+});
+module.exports = router;
