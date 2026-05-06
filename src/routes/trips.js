@@ -3,10 +3,19 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { AppError } = require('../middleware/errorHandler');
 const fareService = require('../services/fareService');
+
+// Charlotte County Florida precise boundaries
+const CHARLOTTE_BOUNDS = { north: 27.04, south: 26.75, east: -81.85, west: -82.45 };
+const inCharlotteCounty = (lat, lng) => {
+  const la = parseFloat(lat), lo = parseFloat(lng);
+  return la >= CHARLOTTE_BOUNDS.south && la <= CHARLOTTE_BOUNDS.north && lo >= CHARLOTTE_BOUNDS.west && lo <= CHARLOTTE_BOUNDS.east;
+};
 const { authenticateToken, requireDriver } = require('../middleware/auth');
 router.post('/estimate', async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount } = req.body;
+    if (!inCharlotteCounty(pickupLat, pickupLng)) return res.status(400).json({ error: 'Pickup is outside Charlotte County service area' });
+    if (!inCharlotteCounty(dropoffLat, dropoffLng)) return res.status(400).json({ error: 'Dropoff is outside Charlotte County service area' });
     const estimate = await fareService.estimate({ pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount });
     res.json({ estimate });
   } catch (err) { next(err); }
@@ -14,6 +23,8 @@ router.post('/estimate', async (req, res, next) => {
 router.post('/request', async (req, res, next) => {
   try {
     const { pickupAddress, pickupLat, pickupLng, dropoffAddress, dropoffLat, dropoffLng, rideType, companionCount, needsWheelchair, needsServiceAnimal, notes } = req.body;
+    if (!inCharlotteCounty(pickupLat, pickupLng)) return res.status(400).json({ error: 'Pickup is outside Charlotte County service area' });
+    if (!inCharlotteCounty(dropoffLat, dropoffLng)) return res.status(400).json({ error: 'Dropoff is outside Charlotte County service area' });
     const estimate = await fareService.estimate({ pickupLat, pickupLng, dropoffLat, dropoffLng, rideType: rideType || 'shared', companionCount: companionCount || 0 });
     const tripResult = await query(
       `INSERT INTO trips (rider_id, status, ride_type, pickup_address, pickup_lat, pickup_lng, dropoff_address, dropoff_lat, dropoff_lng, needs_wheelchair, needs_service_animal, companion_count, estimated_fare, distance_miles, notes)
