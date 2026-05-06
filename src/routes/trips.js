@@ -60,7 +60,7 @@ module.exports = router;
 router.post('/:id/accept', authenticateToken, async (req, res, next) => {
   try {
     const result = await query(
-      `UPDATE trips SET status = 'accepted', driver_id = $1, accepted_at = NOW() WHERE id = $2 AND status = 'matching' RETURNING *`,
+      `UPDATE trips SET status = 'accepted', driver_id = $1, driver_assigned_at = NOW() WHERE id = $2 AND status = 'matching' RETURNING *`,
       [req.user.id, req.params.id]
     );
     if (!result.rows.length) throw new AppError('Trip not available', 400);
@@ -72,7 +72,7 @@ router.post('/:id/accept', authenticateToken, async (req, res, next) => {
 router.post('/:id/start', authenticateToken, async (req, res, next) => {
   try {
     const result = await query(
-      `UPDATE trips SET status = 'in_progress', started_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
+      `UPDATE trips SET status = 'in_progress', trip_started_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
       [req.params.id, req.user.id]
     );
     res.json({ trip: result.rows[0] });
@@ -83,7 +83,7 @@ router.post('/:id/start', authenticateToken, async (req, res, next) => {
 router.post('/:id/complete', authenticateToken, async (req, res, next) => {
   try {
     const result = await query(
-      `UPDATE trips SET status = 'completed', completed_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
+      `UPDATE trips SET status = 'completed', trip_completed_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
       [req.params.id, req.user.id]
     );
     res.json({ trip: result.rows[0] });
