@@ -50,3 +50,10 @@ router.patch('/drivers/:id/approve', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 module.exports = router;
+
+router.get('/trips', async (req, res, next) => {
+  try {
+    const result = await query(`SELECT * FROM trips ORDER BY requested_at DESC LIMIT 100`);
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
