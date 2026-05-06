@@ -89,3 +89,38 @@ router.post('/:id/complete', authenticateToken, async (req, res, next) => {
     res.json({ trip: result.rows[0] });
   } catch (err) { next(err); }
 });
+
+// Get driver location for a trip (for riders)
+router.get('/:id/driver-location', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT d.current_lat, d.current_lng, u.first_name, u.last_name
+      FROM trips t
+      JOIN drivers d ON d.id = t.driver_id
+      JOIN users u ON u.id = d.id
+      WHERE t.id = $1 AND t.rider_id = $2
+    `, [req.params.id, req.user.id]);
+    if (!result.rows.length) return res.json({ location: null });
+    res.json({ location: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// Get trip with rider and driver names
+router.get('/:id/details', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT t.*,
+        ru.first_name as rider_first_name, ru.last_name as rider_last_name,
+        du.first_name as driver_first_name, du.last_name as driver_last_name,
+        d.current_lat as driver_lat, d.current_lng as driver_lng,
+        d.vehicle_make, d.vehicle_model, d.vehicle_plate
+      FROM trips t
+      JOIN users ru ON ru.id = t.rider_id
+      LEFT JOIN drivers d ON d.id = t.driver_id
+      LEFT JOIN users du ON du.id = t.driver_id
+      WHERE t.id = $1
+    `, [req.params.id]);
+    if (!result.rows.length) throw new AppError('Trip not found', 404);
+    res.json(result.rows[0]);
+  } catch (err) { next(err); }
+});
