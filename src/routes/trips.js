@@ -30,6 +30,17 @@ router.get('/history/me', async (req, res, next) => {
     res.json(result.rows);
   } catch (err) { next(err); }
 });
+
+// Get available trips (for drivers)
+router.get('/available', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT * FROM trips WHERE status = 'matching' ORDER BY requested_at ASC LIMIT 10`
+    );
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const result = await query('SELECT * FROM trips WHERE id = $1', [req.params.id]);
@@ -44,16 +55,6 @@ router.post('/:id/cancel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 module.exports = router;
-
-// Get available trips (for drivers)
-router.get('/available', authenticateToken, async (req, res, next) => {
-  try {
-    const result = await query(
-      `SELECT * FROM trips WHERE status = 'matching' ORDER BY requested_at ASC LIMIT 10`
-    );
-    res.json(result.rows);
-  } catch (err) { next(err); }
-});
 
 // Accept a trip (driver)
 router.post('/:id/accept', authenticateToken, async (req, res, next) => {
