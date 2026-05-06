@@ -3,6 +3,7 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { AppError } = require('../middleware/errorHandler');
 const fareService = require('../services/fareService');
+const { authenticateToken, requireDriver } = require('../middleware/auth');
 router.post('/estimate', async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount } = req.body;
@@ -43,3 +44,47 @@ router.post('/:id/cancel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 module.exports = router;
+
+// Get available trips (for drivers)
+router.get('/available', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT * FROM trips WHERE status = 'matching' ORDER BY requested_at ASC LIMIT 10`
+    );
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// Accept a trip (driver)
+router.post('/:id/accept', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(
+      `UPDATE trips SET status = 'accepted', driver_id = $1, accepted_at = NOW() WHERE id = $2 AND status = 'matching' RETURNING *`,
+      [req.user.id, req.params.id]
+    );
+    if (!result.rows.length) throw new AppError('Trip not available', 400);
+    res.json({ trip: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// Start a trip (driver)
+router.post('/:id/start', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(
+      `UPDATE trips SET status = 'in_progress', started_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
+      [req.params.id, req.user.id]
+    );
+    res.json({ trip: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// Complete a trip (driver)
+router.post('/:id/complete', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await query(
+      `UPDATE trips SET status = 'completed', completed_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
+      [req.params.id, req.user.id]
+    );
+    res.json({ trip: result.rows[0] });
+  } catch (err) { next(err); }
+});
