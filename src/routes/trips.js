@@ -71,10 +71,11 @@ router.get('/available', authenticateToken, async (req, res, next) => {
       const matchingTrips = await query(`
         SELECT t.id, t.pickup_lat, t.pickup_lng FROM trips t
         WHERE t.status = 'matching'
+          AND t.requested_at > NOW() - INTERVAL '24 hours'
           AND NOT EXISTS (
             SELECT 1 FROM trip_offers o WHERE o.trip_id = t.id AND o.driver_id = $1
           )
-        ORDER BY t.requested_at ASC LIMIT 1
+        ORDER BY t.requested_at DESC LIMIT 1
       `, [req.user.id]);
       
       if (matchingTrips.rows.length > 0) {
