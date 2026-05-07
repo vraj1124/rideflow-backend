@@ -61,6 +61,24 @@ const createOffer = async (tripId, driverId) => {
     ON CONFLICT DO NOTHING
     RETURNING *
   `, [tripId, driverId]);
+
+  // Send push notification to driver
+  try {
+    const driverResult = await query('SELECT push_token FROM drivers WHERE id = $1', [driverId]);
+    const tripResult = await query('SELECT pickup_address, dropoff_address, distance_miles FROM trips WHERE id = $1', [tripId]);
+    const pushToken = driverResult.rows[0]?.push_token;
+    const trip = tripResult.rows[0];
+    if (pushToken && trip) {
+      await sendPushNotification(
+        pushToken,
+        '🚗 New Ride Request!',
+        `From: ${trip.pickup_address?.slice(0, 35)}...`,
+        { tripId, screen: 'driver' }
+      );
+      console.log('Push notification sent to driver:', driverId);
+    }
+  } catch (e) { console.error('Push error:', e.message); }
+
   return result.rows[0];
 };
 
