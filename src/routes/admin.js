@@ -35,11 +35,13 @@ router.get('/drivers', async (req, res, next) => {
 });
 router.get('/riders', async (req, res, next) => {
   try {
-    const result = await query(
-      `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.created_at,
-       r.ada_eligible, r.needs_wheelchair, r.total_trips
-       FROM riders r JOIN users u ON u.id = r.id ORDER BY u.created_at DESC`
-    );
+    const result = await query(`
+      SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.created_at,
+        r.category, r.approval_status, r.approved_at
+      FROM users u
+      JOIN riders r ON r.id = u.id
+      ORDER BY u.created_at DESC
+    `);
     res.json(result.rows);
   } catch (err) { next(err); }
 });
@@ -49,6 +51,20 @@ router.patch('/drivers/:id/approve', async (req, res, next) => {
     res.json({ message: 'Driver approved' });
   } catch (err) { next(err); }
 });
+router.post('/riders/:id/approve', async (req, res, next) => {
+  try {
+    await query(`UPDATE riders SET approval_status = 'approved', approved_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/riders/:id/reject', async (req, res, next) => {
+  try {
+    await query(`UPDATE riders SET approval_status = 'rejected' WHERE id = $1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
 
 router.get('/trips', async (req, res, next) => {
