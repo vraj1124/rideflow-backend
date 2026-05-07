@@ -38,3 +38,9 @@ app.use('/api/payments', authenticateToken, paymentRoutes);
 app.use((req, res) => { res.status(404).json({ error: `Route ${req.originalUrl} not found` }); });
 app.use(errorHandler);
 module.exports = { app, httpServer };
+
+// Process trip matching every 10 seconds
+const { processExpiredOffers } = require('./services/matchingService');
+setInterval(async () => {
+  try { await processExpiredOffers(); } catch(e) {}
+}, 10000);

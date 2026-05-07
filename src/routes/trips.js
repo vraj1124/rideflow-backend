@@ -11,6 +11,7 @@ const inCharlotteCounty = (lat, lng) => {
   return la >= CHARLOTTE_BOUNDS.south && la <= CHARLOTTE_BOUNDS.north && lo >= CHARLOTTE_BOUNDS.west && lo <= CHARLOTTE_BOUNDS.east;
 };
 const { authenticateToken, requireDriver } = require('../middleware/auth');
+const { findNearestDriver, createOffer, processExpiredOffers } = require('../services/matchingService');
 router.post('/estimate', async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount } = req.body;
@@ -32,6 +33,14 @@ router.post('/request', async (req, res, next) => {
       [req.user.id, rideType || 'shared', pickupAddress, pickupLat, pickupLng, dropoffAddress, dropoffLat, dropoffLng, needsWheelchair || false, needsServiceAnimal || false, companionCount || 0, estimate.total, estimate.distanceMiles, notes]
     );
     res.status(201).json({ trip: tripResult.rows[0], estimate });
+    // Trigger matching asynchronously
+    setImmediate(async () => {
+      try {
+        const trip = tripResult.rows[0];
+        const driver = await findNearestDriver(trip.id, trip.pickup_lat, trip.pickup_lng);
+        if (driver) await createOffer(trip.id, driver.id);
+      } catch(e) { console.error('Matching error:', e); }
+    });
   } catch (err) { next(err); }
 });
 router.get('/history/me', async (req, res, next) => {
@@ -42,12 +51,23 @@ router.get('/history/me', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Get available trips (for drivers)
+// Get available trips (for drivers) - only shows trips offered to this driver
 router.get('/available', authenticateToken, async (req, res, next) => {
   try {
-    const result = await query(
-      `SELECT * FROM trips WHERE status = 'matching' ORDER BY requested_at ASC LIMIT 10`
-    );
+    // First process any expired offers and create new ones
+    await processExpiredOffers();
+    
+    // Return trips offered to this driver that haven't expired
+    const result = await query(`
+      SELECT t.*, o.expires_at as offer_expires_at, o.id as offer_id
+      FROM trips t
+      JOIN trip_offers o ON o.trip_id = t.id
+      WHERE o.driver_id = $1 
+        AND o.status = 'pending'
+        AND o.expires_at > NOW()
+        AND t.status = 'matching'
+      ORDER BY o.offered_at ASC
+    `, [req.user.id]);
     res.json(result.rows);
   } catch (err) { next(err); }
 });
@@ -70,6 +90,16 @@ module.exports = router;
 // Accept a trip (driver)
 router.post('/:id/accept', authenticateToken, async (req, res, next) => {
   try {
+    // Accept the offer
+    await query(
+      `UPDATE trip_offers SET status = 'accepted' WHERE trip_id = $1 AND driver_id = $2 AND status = 'pending'`,
+      [req.params.id, req.user.id]
+    );
+    // Decline all other pending offers for this trip
+    await query(
+      `UPDATE trip_offers SET status = 'declined' WHERE trip_id = $1 AND driver_id != $2 AND status = 'pending'`,
+      [req.params.id, req.user.id]
+    );
     const result = await query(
       `UPDATE trips SET status = 'accepted', driver_id = $1, driver_assigned_at = NOW() WHERE id = $2 AND status = 'matching' RETURNING *`,
       [req.user.id, req.params.id]
