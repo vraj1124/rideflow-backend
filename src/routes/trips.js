@@ -57,9 +57,32 @@ router.get('/available', authenticateToken, async (req, res, next) => {
     // Set driver online when they check for rides
     await query('UPDATE drivers SET is_online = true WHERE id = $1', [req.user.id]);
     
-    // First process any expired offers and create new ones
+    // Process expired offers and create new ones
     await processExpiredOffers();
     
+    // Also directly find and offer trips to this driver if none pending
+    const pendingCheck = await query(
+      `SELECT COUNT(*) FROM trip_offers WHERE driver_id = $1 AND status = 'pending' AND expires_at > NOW()`,
+      [req.user.id]
+    );
+    
+    if (parseInt(pendingCheck.rows[0].count) === 0) {
+      // Find a matching trip and offer directly to this driver
+      const matchingTrips = await query(`
+        SELECT t.id, t.pickup_lat, t.pickup_lng FROM trips t
+        WHERE t.status = 'matching'
+          AND NOT EXISTS (
+            SELECT 1 FROM trip_offers o WHERE o.trip_id = t.id AND o.driver_id = $1
+          )
+        ORDER BY t.requested_at ASC LIMIT 1
+      `, [req.user.id]);
+      
+      if (matchingTrips.rows.length > 0) {
+        const trip = matchingTrips.rows[0];
+        await createOffer(trip.id, req.user.id);
+      }
+    }
+
     // Return trips offered to this driver that haven't expired
     const result = await query(`
       SELECT t.*, o.expires_at as offer_expires_at, o.id as offer_id
