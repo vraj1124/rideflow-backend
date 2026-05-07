@@ -46,8 +46,24 @@ router.post('/request', async (req, res, next) => {
 router.get('/history/me', async (req, res, next) => {
   try {
     const field = req.user.role === 'driver' ? 'driver_id' : 'rider_id';
-    const result = await query(`SELECT * FROM trips WHERE ${field} = $1 ORDER BY requested_at DESC LIMIT 20`, [req.user.id]);
+    const result = await query(`SELECT * FROM trips WHERE ${field} = $1 ORDER BY requested_at DESC LIMIT 100`, [req.user.id]);
     res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// Get driver earnings summary
+router.get('/earnings/me', async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        COUNT(*) as total_trips,
+        COALESCE(SUM(estimated_fare::float), 0) as total_earnings,
+        COALESCE(SUM(CASE WHEN requested_at > NOW() - INTERVAL '7 days' THEN estimated_fare::float ELSE 0 END), 0) as week_earnings,
+        COALESCE(SUM(CASE WHEN requested_at > NOW() - INTERVAL '30 days' THEN estimated_fare::float ELSE 0 END), 0) as month_earnings
+      FROM trips 
+      WHERE driver_id = $1 AND status = 'completed'
+    `, [req.user.id]);
+    res.json(result.rows[0]);
   } catch (err) { next(err); }
 });
 
