@@ -54,6 +54,9 @@ router.get('/history/me', async (req, res, next) => {
 // Get available trips (for drivers) - only shows trips offered to this driver
 router.get('/available', authenticateToken, async (req, res, next) => {
   try {
+    // Set driver online when they check for rides
+    await query('UPDATE drivers SET is_online = true WHERE id = $1', [req.user.id]);
+    
     // First process any expired offers and create new ones
     await processExpiredOffers();
     
