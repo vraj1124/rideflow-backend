@@ -12,9 +12,10 @@ const haversineDistance = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const getDrivingDistance = (pickupLat, pickupLng, dropoffLat, dropoffLng) => {
+const getDrivingDistance = (origin, destination) => {
   return new Promise((resolve) => {
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${pickupLat},${pickupLng}&destinations=${dropoffLat},${dropoffLng}&units=imperial&key=${MAPS_KEY}`;
+    const enc = encodeURIComponent;
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${enc(origin)}&destinations=${enc(destination)}&units=imperial&mode=driving&key=${MAPS_KEY}`;
     https.get(url, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -40,7 +41,7 @@ const getDrivingDistance = (pickupLat, pickupLng, dropoffLat, dropoffLng) => {
 
 const FARE_CONFIG = { shared: { multiplier: 1.0 }, private: { multiplier: 2.0 }, ada_paratransit: { multiplier: 1.0 } };
 
-const estimate = async ({ pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount = 0 }) => {
+const estimate = async ({ pickupLat, pickupLng, dropoffLat, dropoffLng, pickupAddress, dropoffAddress, rideType, companionCount = 0 }) => {
   const zoneResult = await query(
     'SELECT base_fare, per_mile_rate FROM zones WHERE is_active = true ORDER BY ((center_lat - $1)^2 + (center_lng - $2)^2) ASC LIMIT 1',
     [pickupLat, pickupLng]
@@ -49,9 +50,12 @@ const estimate = async ({ pickupLat, pickupLng, dropoffLat, dropoffLng, rideType
   const perMileRate = parseFloat(zoneResult.rows[0]?.per_mile_rate || 0.90);
   const companionFare = parseFloat(process.env.COMPANION_FARE || 1.00);
 
-  // Try Google Distance Matrix first, fall back to haversine
+  // Use full address if available, otherwise fall back to coordinates
   let distanceMiles, durationMinutes;
-  const driving = await getDrivingDistance(pickupLat, pickupLng, dropoffLat, dropoffLng);
+  const origin = pickupAddress || `${pickupLat},${pickupLng}`;
+  const destination = dropoffAddress || `${dropoffLat},${dropoffLng}`;
+  
+  const driving = await getDrivingDistance(origin, destination);
   if (driving) {
     distanceMiles = driving.miles;
     durationMinutes = driving.durationMinutes;

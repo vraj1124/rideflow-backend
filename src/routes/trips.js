@@ -16,7 +16,7 @@ router.post('/estimate', async (req, res, next) => {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount } = req.body;
     if (!inCharlotteCounty(pickupLat, pickupLng)) return res.status(400).json({ error: 'Pickup is outside Charlotte County service area' });
     if (!inCharlotteCounty(dropoffLat, dropoffLng)) return res.status(400).json({ error: 'Dropoff is outside Charlotte County service area' });
-    const estimate = await fareService.estimate({ pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount });
+    const estimate = await fareService.estimate({ pickupLat, pickupLng, dropoffLat, dropoffLng, pickupAddress: req.body.pickupAddress, dropoffAddress: req.body.dropoffAddress, rideType, companionCount });
     res.json({ estimate });
   } catch (err) { next(err); }
 });
