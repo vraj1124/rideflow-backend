@@ -60,6 +60,13 @@ router.get('/available', authenticateToken, async (req, res, next) => {
     // Process expired offers and create new ones
     await processExpiredOffers();
     
+    // Refresh expiry time for existing pending offers (reset to 30 seconds from now)
+    await query(
+      `UPDATE trip_offers SET expires_at = NOW() + INTERVAL '30 seconds' 
+       WHERE driver_id = $1 AND status = 'pending' AND expires_at > NOW()`,
+      [req.user.id]
+    );
+
     // Also directly find and offer trips to this driver if none pending
     const pendingCheck = await query(
       `SELECT COUNT(*) FROM trip_offers WHERE driver_id = $1 AND status = 'pending' AND expires_at > NOW()`,
