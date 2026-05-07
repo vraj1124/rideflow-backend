@@ -13,6 +13,12 @@ httpServer.listen(PORT, () => {
   `);
 });
 
+// Process trip matching every 10 seconds
+const { processExpiredOffers } = require('./services/matchingService');
+setInterval(async () => {
+  try { await processExpiredOffers(); } catch(e) { console.error('Matching error:', e.message); }
+}, 10000);
+
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
   process.exit(1);
