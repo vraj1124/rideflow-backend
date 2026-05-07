@@ -13,13 +13,13 @@ const findNearestDriver = async (tripId, pickupLat, pickupLng) => {
       AND d.current_lat IS NOT NULL
       AND d.id NOT IN (
         SELECT driver_id FROM trip_offers 
-        WHERE trip_id = $3 AND status IN ('pending', 'declined', 'expired', 'accepted')
+        WHERE trip_id = $1 AND status IN ('pending', 'declined', 'expired', 'accepted')
       )
       AND d.id NOT IN (
         SELECT driver_id FROM trips 
         WHERE status IN ('accepted', 'in_progress') AND driver_id IS NOT NULL
       )
-  `, [pickupLat, pickupLng, tripId]);
+  `, [tripId]);
 
   if (!result.rows.length) return null;
 
