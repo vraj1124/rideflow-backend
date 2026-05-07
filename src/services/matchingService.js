@@ -1,4 +1,25 @@
 const { query } = require('../config/database');
+const https = require('https');
+
+const sendPushNotification = async (pushToken, title, body, data = {}) => {
+  if (!pushToken || !pushToken.startsWith('ExponentPushToken')) return;
+  const message = { to: pushToken, sound: 'default', title, body, data, priority: 'high' };
+  return new Promise((resolve) => {
+    const payload = JSON.stringify(message);
+    const req = https.request({
+      hostname: 'exp.host',
+      path: '/--/api/v2/push/send',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+    }, (res) => {
+      res.on('data', () => {});
+      res.on('end', resolve);
+    });
+    req.on('error', resolve);
+    req.write(payload);
+    req.end();
+  });
+};
 const { haversineDistance } = require('./fareService');
 
 const MATCH_RADIUS_MILES = parseFloat(process.env.DRIVER_MATCH_RADIUS_MILES || 10);

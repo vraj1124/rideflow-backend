@@ -39,4 +39,12 @@ router.post('/location', requireDriver, async (req, res, next) => {
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
+router.post('/push-token', requireDriver, async (req, res, next) => {
+  try {
+    const { pushToken } = req.body;
+    await query('UPDATE drivers SET push_token = $1 WHERE id = $2', [pushToken, req.user.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
