@@ -36,7 +36,7 @@ const findNearestDriver = async (tripId, pickupLat, pickupLng) => {
 const createOffer = async (tripId, driverId) => {
   const result = await query(`
     INSERT INTO trip_offers (trip_id, driver_id, offered_at, expires_at, status)
-    VALUES ($1, $2, NOW(), NOW() + INTERVAL '2 minutes', 'pending')
+    VALUES ($1, $2, NOW(), NOW() + INTERVAL '30 seconds', 'pending')
     ON CONFLICT DO NOTHING
     RETURNING *
   `, [tripId, driverId]);
