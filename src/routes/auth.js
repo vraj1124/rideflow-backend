@@ -64,7 +64,14 @@ router.post('/login', authLimiter, [
     const { accessToken, refreshToken } = generateTokens(user.id, user.role);
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await query('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1,$2,$3)', [user.id, refreshToken, expiresAt]);
-    res.json({ user: { id: user.id, email: user.email, role: user.role, firstName: user.first_name, lastName: user.last_name }, accessToken, refreshToken });
+    let extraData = {};
+    if (user.role === 'rider') {
+      const riderResult = await query('SELECT category, approval_status FROM riders WHERE id = $1', [user.id]);
+      if (riderResult.rows.length > 0) {
+        extraData = { category: riderResult.rows[0].category, approvalStatus: riderResult.rows[0].approval_status };
+      }
+    }
+    res.json({ user: { id: user.id, email: user.email, role: user.role, firstName: user.first_name, lastName: user.last_name, ...extraData }, accessToken, refreshToken });
   } catch (err) { next(err); }
 });
 router.post('/logout', async (req, res, next) => {
