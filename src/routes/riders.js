@@ -25,6 +25,18 @@ router.patch('/me', async (req, res, next) => {
     res.json({ message: 'Profile updated' });
   } catch (err) { next(err); }
 });
+router.post('/upload-document', async (req, res, next) => {
+  try {
+    // Store document info - in production this would upload to S3/Supabase Storage
+    // For now we mark that document was submitted
+    await query(
+      'UPDATE riders SET proof_document_name = $1, approval_status = CASE WHEN approval_status = 'pending' THEN 'pending' ELSE approval_status END WHERE id = $2',
+      ['document_submitted', req.user.id]
+    );
+    res.json({ ok: true, message: 'Document submitted for review' });
+  } catch (err) { next(err); }
+});
+
 router.post('/push-token', async (req, res, next) => {
   try {
     const { pushToken } = req.body;
