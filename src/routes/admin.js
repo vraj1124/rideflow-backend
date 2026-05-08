@@ -38,7 +38,7 @@ router.get('/riders', async (req, res, next) => {
   try {
     const result = await query(`
       SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.created_at,
-        r.category, r.approval_status, r.approved_at
+        r.category, r.approval_status, r.approved_at, r.proof_document_name
       FROM users u
       JOIN riders r ON r.id = u.id
       ORDER BY u.created_at DESC
