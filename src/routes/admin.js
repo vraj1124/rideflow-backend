@@ -1,4 +1,5 @@
 const express = require('express');
+const https = require('https');
 const router = express.Router();
 const { query } = require('../config/database');
 const { AppError } = require('../middleware/errorHandler');
@@ -60,7 +61,6 @@ router.post('/riders/:id/approve', async (req, res, next) => {
       const userResult = await query('SELECT u.first_name, r.push_token FROM users u LEFT JOIN riders r ON r.id = u.id WHERE u.id = $1', [req.params.id]);
       const rider = userResult.rows[0];
       if (rider?.push_token) {
-        const https = require('https');
         const message = JSON.stringify({
           to: rider.push_token,
           sound: 'default',
