@@ -17,6 +17,16 @@ router.post('/estimate', async (req, res, next) => {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount } = req.body;
     if (!inCharlotteCounty(pickupLat, pickupLng)) return res.status(400).json({ error: 'Pickup is outside Charlotte County service area' });
     if (!inCharlotteCounty(dropoffLat, dropoffLng)) return res.status(400).json({ error: 'Dropoff is outside Charlotte County service area' });
+    // Check rider approval status
+    if (req.user.role === 'rider') {
+      const riderCheck = await query('SELECT approval_status FROM riders WHERE id = $1', [req.user.id]);
+      if (riderCheck.rows[0]?.approval_status === 'pending') {
+        return res.status(403).json({ error: 'Your account is pending admin approval. Please wait for approval before booking rides.' });
+      }
+      if (riderCheck.rows[0]?.approval_status === 'rejected') {
+        return res.status(403).json({ error: 'Your account has been rejected. Please contact support at (941) 555-1234.' });
+      }
+    }
     const estimate = await fareService.estimate({ pickupLat, pickupLng, dropoffLat, dropoffLng, pickupAddress: req.body.pickupAddress, dropoffAddress: req.body.dropoffAddress, rideType, companionCount });
     res.json({ estimate });
   } catch (err) { next(err); }

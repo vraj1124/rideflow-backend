@@ -54,6 +54,26 @@ router.patch('/drivers/:id/approve', async (req, res, next) => {
 router.post('/riders/:id/approve', async (req, res, next) => {
   try {
     await query(`UPDATE riders SET approval_status = 'approved', approved_at = NOW() WHERE id = $1`, [req.params.id]);
+    
+    // Send push notification to rider
+    try {
+      const userResult = await query('SELECT u.first_name, r.push_token FROM users u LEFT JOIN riders r ON r.id = u.id WHERE u.id = $1', [req.params.id]);
+      const rider = userResult.rows[0];
+      if (rider?.push_token) {
+        const https = require('https');
+        const message = JSON.stringify({
+          to: rider.push_token,
+          sound: 'default',
+          title: '✅ Account Approved!',
+          body: `Great news, ${rider.first_name}! Your RideFlow account has been approved. You can now book rides!`,
+          priority: 'high'
+        });
+        const req2 = https.request({ hostname: 'exp.host', path: '/--/api/v2/push/send', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(message) } });
+        req2.write(message);
+        req2.end();
+      }
+    } catch (e) { console.error('Push error:', e.message); }
+    
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

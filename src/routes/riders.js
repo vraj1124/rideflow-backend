@@ -25,4 +25,12 @@ router.patch('/me', async (req, res, next) => {
     res.json({ message: 'Profile updated' });
   } catch (err) { next(err); }
 });
+router.post('/push-token', async (req, res, next) => {
+  try {
+    const { pushToken } = req.body;
+    await query('UPDATE riders SET push_token = $1 WHERE id = $2', [pushToken, req.user.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
