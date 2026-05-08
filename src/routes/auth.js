@@ -1,4 +1,6 @@
 const express = require('express');
+const sgMail = require('@sendgrid/mail');
+sgMail.setApiKey('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');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
@@ -88,6 +90,81 @@ router.post('/logout', async (req, res, next) => {
     res.json({ message: 'Logged out' });
   } catch (err) { next(err); }
 });
+// Forgot password - send reset code
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email required' });
+    
+    const result = await query('SELECT id, first_name FROM users WHERE email = $1', [email]);
+    if (!result.rows.length) return res.status(404).json({ error: 'No account found with this email' });
+    
+    const user = result.rows[0];
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    
+    // Store reset code
+    await query(
+      `INSERT INTO password_resets (user_id, code, expires_at) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET code = $2, expires_at = $3`,
+      [user.id, resetCode, expiresAt]
+    );
+    
+    // Send email
+    await sgMail.send({
+      to: email,
+      from: 'noreply@rideflow.com',
+      subject: 'RideFlow Password Reset Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #3b82f6;">RideFlow Password Reset</h2>
+          <p>Hi ${user.first_name},</p>
+          <p>Your password reset code is:</p>
+          <div style="background: #f0f4ff; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #3b82f6;">${resetCode}</span>
+          </div>
+          <p style="color: #666;">This code expires in 15 minutes.</p>
+          <p style="color: #666;">If you didn't request this, please ignore this email.</p>
+          <p>— RideFlow Team</p>
+        </div>
+      `
+    });
+    
+    res.json({ ok: true, message: 'Reset code sent to your email' });
+  } catch (err) { next(err); }
+});
+
+// Reset password with code
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) return res.status(400).json({ error: 'All fields required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    
+    const userResult = await query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!userResult.rows.length) return res.status(404).json({ error: 'Account not found' });
+    
+    const userId = userResult.rows[0].id;
+    const resetResult = await query(
+      'SELECT code, expires_at FROM password_resets WHERE user_id = $1',
+      [userId]
+    );
+    
+    if (!resetResult.rows.length) return res.status(400).json({ error: 'No reset code found. Please request a new one.' });
+    
+    const reset = resetResult.rows[0];
+    if (reset.code !== code) return res.status(400).json({ error: 'Invalid reset code' });
+    if (new Date() > new Date(reset.expires_at)) return res.status(400).json({ error: 'Reset code expired. Please request a new one.' });
+    
+    const bcrypt = require('bcryptjs');
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
+    await query('DELETE FROM password_resets WHERE user_id = $1', [userId]);
+    
+    res.json({ ok: true, message: 'Password reset successfully' });
+  } catch (err) { next(err); }
+});
+
 router.get('/me', async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
