@@ -1,4 +1,11 @@
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(
+  'https://tgnpkwjrpbhlsfwwgasg.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnbnBrd2pycGJobHNmd3dnYXNnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzY2NTY0MywiZXhwIjoyMDkzMjQxNjQzfQ.oyNwLcrI2PkjtcHCB6PJueUab8TK9uGK4hfbr0taP_8'
+);
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const router = express.Router();
 const { query } = require('../config/database');
 const { AppError } = require('../middleware/errorHandler');
@@ -25,14 +32,33 @@ router.patch('/me', async (req, res, next) => {
     res.json({ message: 'Profile updated' });
   } catch (err) { next(err); }
 });
-router.post('/upload-document', async (req, res, next) => {
+router.post('/upload-document', upload.single('document'), async (req, res, next) => {
   try {
-    const docName = req.body.documentName || 'document_submitted';
+    if (!req.file) {
+      // Handle JSON submission without file (mark as submitted)
+      await query('UPDATE riders SET proof_document_name = $1 WHERE id = $2', ['document_submitted', req.user.id]);
+      return res.json({ ok: true, message: 'Document submitted' });
+    }
+
+    const fileName = `${req.user.id}_${Date.now()}.${req.file.mimetype.split('/')[1] || 'jpg'}`;
+    
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .upload(fileName, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+
+    if (error) throw error;
+
+    // Get signed URL valid for 7 days for admin viewing
+    const { data: urlData } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(fileName, 60 * 60 * 24 * 7);
+
     await query(
-      `UPDATE riders SET proof_document_name = $1 WHERE id = $2`,
-      [docName, req.user.id]
+      'UPDATE riders SET proof_document_name = $1, proof_document_url = $2 WHERE id = $3',
+      [fileName, urlData.signedUrl, req.user.id]
     );
-    res.json({ ok: true, message: 'Document submitted for review' });
+
+    res.json({ ok: true, message: 'Document uploaded successfully' });
   } catch (err) { next(err); }
 });
 
