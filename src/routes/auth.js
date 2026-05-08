@@ -36,7 +36,14 @@ router.post('/register', authLimiter, [
         [email, phone, passwordHash, firstName, lastName, role]
       );
       const userId = userResult.rows[0].id;
-      if (role === 'rider') await client.query('INSERT INTO riders (id) VALUES ($1)', [userId]);
+      if (role === 'rider') {
+        const category = req.body.category || 'general';
+        const approvalStatus = category === 'general' ? 'approved' : 'pending';
+        await client.query(
+          'INSERT INTO riders (id, category, approval_status) VALUES ($1, $2, $3)',
+          [userId, category, approvalStatus]
+        );
+      }
       else if (role === 'driver') {
         const { licenseNumber, licenseExpiry, vehiclePlate, vehicleMake, vehicleModel, vehicleYear } = req.body;
         await client.query('INSERT INTO drivers (id, license_number, license_expiry, vehicle_plate, vehicle_make, vehicle_model, vehicle_year) VALUES ($1,$2,$3,$4,$5,$6,$7)', [userId, licenseNumber, licenseExpiry, vehiclePlate, vehicleMake, vehicleModel, vehicleYear]);
@@ -81,4 +88,25 @@ router.post('/logout', async (req, res, next) => {
     res.json({ message: 'Logged out' });
   } catch (err) { next(err); }
 });
+router.get('/me', async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token' });
+    const token = authHeader.split(' ')[1];
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const result = await query('SELECT id, email, role, first_name, last_name FROM users WHERE id = $1', [decoded.userId]);
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    let extraData = {};
+    if (user.role === 'rider') {
+      const riderResult = await query('SELECT category, approval_status FROM riders WHERE id = $1', [user.id]);
+      if (riderResult.rows.length > 0) {
+        extraData = { category: riderResult.rows[0].category, approvalStatus: riderResult.rows[0].approval_status };
+      }
+    }
+    res.json({ id: user.id, email: user.email, role: user.role, firstName: user.first_name, lastName: user.last_name, ...extraData });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
