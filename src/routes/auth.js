@@ -113,7 +113,7 @@ router.post('/forgot-password', async (req, res, next) => {
     // Send email
     await sgMail.send({
       to: email,
-      from: 'noreply@rideflow.com',
+      from: 'vraj@cprmedicaltransport.com',
       subject: 'RideFlow Password Reset Code',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
