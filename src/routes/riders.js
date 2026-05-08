@@ -27,11 +27,10 @@ router.patch('/me', async (req, res, next) => {
 });
 router.post('/upload-document', async (req, res, next) => {
   try {
-    // Store document info - in production this would upload to S3/Supabase Storage
-    // For now we mark that document was submitted
+    const docName = req.body.documentName || 'document_submitted';
     await query(
-      `UPDATE riders SET proof_document_name = $1, approval_status = CASE WHEN approval_status = 'pending' THEN 'pending' ELSE approval_status END WHERE id = $2`,
-      ['document_submitted', req.user.id]
+      `UPDATE riders SET proof_document_name = $1 WHERE id = $2`,
+      [docName, req.user.id]
     );
     res.json({ ok: true, message: 'Document submitted for review' });
   } catch (err) { next(err); }
