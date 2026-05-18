@@ -70,4 +70,36 @@ router.post('/push-token', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+// Get trusted circle
+router.get('/trusted-circle', async (req, res, next) => {
+  try {
+    const result = await query('SELECT * FROM trusted_circle WHERE rider_id = $1 ORDER BY created_at ASC', [req.user.id]);
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// Add trusted contact
+router.post('/trusted-circle', async (req, res, next) => {
+  try {
+    const { name, phone, email, relationship } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    const count = await query('SELECT COUNT(*) FROM trusted_circle WHERE rider_id = $1', [req.user.id]);
+    if (parseInt(count.rows[0].count) >= 3) return res.status(400).json({ error: 'Maximum 3 trusted contacts allowed' });
+    const result = await query(
+      'INSERT INTO trusted_circle (rider_id, name, phone, email, relationship) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [req.user.id, name, phone, email, relationship]
+    );
+    res.json(result.rows[0]);
+  } catch (err) { next(err); }
+});
+
+// Delete trusted contact
+router.delete('/trusted-circle/:id', async (req, res, next) => {
+  try {
+    await query('DELETE FROM trusted_circle WHERE id = $1 AND rider_id = $2', [req.params.id, req.user.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
