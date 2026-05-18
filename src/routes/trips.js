@@ -12,6 +12,33 @@ const inCharlotteCounty = (lat, lng) => {
 };
 const { authenticateToken, requireDriver } = require('../middleware/auth');
 const { findNearestDriver, createOffer, processExpiredOffers } = require('../services/matchingService');
+
+// Send SMS/email to trusted circle
+const notifyTrustedCircle = async (riderId, message) => {
+  try {
+    const contacts = await query('SELECT * FROM trusted_circle WHERE rider_id = $1', [riderId]);
+    const sgMail = require('@sendgrid/mail');
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    
+    for (const contact of contacts.rows) {
+      if (contact.email) {
+        await sgMail.send({
+          to: contact.email,
+          from: 'vraj@cprmedicaltransport.com',
+          subject: 'RideFlow — Ride Update',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #3b82f6;">RideFlow Update</h2>
+              <p>Hi ${contact.name},</p>
+              <p style="font-size: 16px; background: #f0f4ff; padding: 16px; border-radius: 10px;">${message}</p>
+              <p style="color: #666; font-size: 12px;">You are receiving this because you are a trusted contact on RideFlow.</p>
+            </div>
+          `
+        });
+      }
+    }
+  } catch (e) { console.error('Trusted circle notification error:', e.message); }
+};
 router.post('/estimate', async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, rideType, companionCount } = req.body;
