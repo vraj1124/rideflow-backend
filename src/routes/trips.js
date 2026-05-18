@@ -214,7 +214,21 @@ router.post('/:id/complete', authenticateToken, async (req, res, next) => {
       `UPDATE trips SET status = 'completed', trip_completed_at = NOW() WHERE id = $1 AND driver_id = $2 RETURNING *`,
       [req.params.id, req.user.id]
     );
-    res.json({ trip: result.rows[0] });
+    if (!result.rows.length) throw new AppError('Trip not found', 404);
+    const completedTrip = result.rows[0];
+    res.json({ trip: completedTrip });
+
+    // Notify trusted circle - ride completed
+    setImmediate(async () => {
+      try {
+        const riderInfo = await query('SELECT first_name, last_name FROM users WHERE id = $1', [completedTrip.rider_id]);
+        const riderName = riderInfo.rows[0] ? riderInfo.rows[0].first_name + ' ' + riderInfo.rows[0].last_name : 'Your loved one';
+        const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        await notifyTrustedCircle(completedTrip.rider_id,
+          '✅ ' + riderName + ' has been safely dropped off!<br><br>📍 Arrived at: ' + completedTrip.dropoff_address + '<br>⏰ Time: ' + time
+        );
+      } catch(e) { console.error('Trusted circle notify error:', e.message); }
+    });
   } catch (err) { next(err); }
 });
 
